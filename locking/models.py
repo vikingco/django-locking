@@ -23,7 +23,7 @@ class LockManager(models.Manager):
 
         try:
             lock, created = self.get_or_create(locked_object=lock_name,
-                                               max_age=max_age)
+                                               defaults={'max_age': max_age})
         except IntegrityError:
             raise AlreadyLocked()
 

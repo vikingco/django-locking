@@ -60,7 +60,7 @@ class LockTest(TestCase):
     def test_relock(self):
         '''Test to allow lock if lock is expired'''
         l = Lock.objects.acquire_lock(self.user, max_age=1)
-        time.sleep(1)
+        time.sleep(2)
         self.assertTrue(l.is_expired)
         # try to lock again
         l2 = Lock.objects.acquire_lock(self.user, max_age=1)
@@ -70,7 +70,7 @@ class LockTest(TestCase):
         '''Test the expired locks'''
         l = Lock.objects.acquire_lock(self.user, max_age=0)
         l2 = Lock.objects.acquire_lock(l, max_age=1)
-        time.sleep(1)  # make lock expire
+        time.sleep(2)  # make lock expire
         self.assertTrue(not l.is_expired)
         self.assertTrue(l2.is_expired)
         expired_locks = Lock.objects.get_expired_locks()

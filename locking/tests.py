@@ -22,6 +22,12 @@ class LockTest(TestCase):
         self.assertTrue(Lock.objects.is_locked(self.user))
         l.release()
         self.assertTrue(not Lock.objects.is_locked(self.user))
+    
+    def test_obj_with_expired_lock_is_not_locked(self):
+        ''' Tests that manager.is_locked returns False if locks are expired '''
+        Lock.objects.acquire_lock(self.user, max_age=1)
+        time.sleep(2)  # make lock expire
+        self.assertFalse(Lock.objects.is_locked(self.user))
 
     def test_lock_twice(self):
         ''' Tests a double locking (lock and try to lock again) '''

@@ -6,7 +6,6 @@ import time
 from django.test import TestCase
 
 from django.contrib.auth.models import User
-from django.contrib.contenttypes.models import ContentType
 
 from .exceptions import AlreadyLocked
 from .models import Lock, _get_lock_name
@@ -36,7 +35,7 @@ class LockTest(TestCase):
         time.sleep(1)
         l.renew()
         self.assertLess(expires, l.expires_on)
-        
+        time.sleep(1)
         l2 = Lock.objects.renew_lock(l.pk)
         self.assertEqual(l.pk, l2.pk)
         self.assertLess(l.expires_on, l2.expires_on)

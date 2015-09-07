@@ -60,3 +60,39 @@ class NotLocked(UnlockError):
     ...   pass
     '''
     pass
+
+
+class RenewalError(Error):
+    '''
+    Base class for errors arising from attempts to renew the lock.
+
+    >>> try:
+    ...   raise RenewalError
+    ... except Error:
+    ...   pass
+    '''
+    pass
+
+
+class NonexistentLock(RenewalError):
+    '''
+    Raised when an attempt is made to renew a nonexistent lock.
+
+    >>> try:
+    ...   raise NonexistentLock
+    ... except RenewalError:
+    ...   pass
+    '''
+    pass
+
+
+class Expired(RenewalError):
+    '''
+    Raised when an attempt is made to renew an expired lock.
+
+    >>> try:
+    ...   raise Expired
+    ... except RenewalError:
+    ...   pass
+    '''
+    pass

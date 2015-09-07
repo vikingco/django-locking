@@ -1,17 +1,19 @@
 from datetime import timedelta
 
 from django.utils import timezone
-from django.db import models, IntegrityError
+from django.db import models, IntegrityError, transaction
+from django.db.models import Q
+from django.db.models.signals import pre_save
+from django.dispatch import receiver
 from django.conf import settings
-from django.contrib.contenttypes.models import ContentType
-from django.contrib.contenttypes import generic
 from django.utils.translation import ugettext_lazy as _
 
-from .exceptions import NotLocked, AlreadyLocked
+from .exceptions import NotLocked, AlreadyLocked, NonexistentLock, Expired
 
 
 #: The default lock age.
-DEFAULT_MAX_AGE = getattr(settings, 'LOCK_MAX_AGE', 0)
+MAX_AGE_FOREVER = 0
+DEFAULT_MAX_AGE = getattr(settings, 'LOCK_MAX_AGE', MAX_AGE_FOREVER)
 
 
 def _get_lock_name(obj):
@@ -42,22 +44,65 @@ class LockManager(models.Manager):
         '''
         if obj is not None:
             lock_name = _get_lock_name(obj)
-
-        try:
-            lock, created = self.get_or_create(locked_object=lock_name,
-                                               defaults={'max_age': max_age})
-        except IntegrityError:
-            raise AlreadyLocked()
-
-        if not created:
-            # check whether lock is expired
-            if lock.is_expired:
-                lock.created_on = timezone.now()
-                lock.save()
-                return lock
-            raise AlreadyLocked()
+        
+        with transaction.atomic():
+            try:
+                lock, created = self.get_or_create(locked_object=lock_name,
+                                                   defaults={'max_age': max_age})
+            except IntegrityError:
+                raise AlreadyLocked()
+    
+            if not created:
+                # check whether lock is expired
+                if lock.is_expired:
+                    # Create a new lock to provide a new id for renewal.
+                    # This ensures the owner of the previous lock doesn't
+                    # remain in possession of the active lock id.
+                    lock.release()
+                    lock = self.create(locked_object=lock_name, max_age=max_age)
+                else:
+                    raise AlreadyLocked()
 
         return lock
+
+    def release_lock(self, pk):
+        '''
+        Releases a lock
+        :param int pk: the primary key for the lock to release
+        '''
+        
+        with transaction.atomic():
+            try:
+                lock = self.get(pk=pk)
+            except self.model.DoesNotExist:
+                raise NotLocked()
+            
+            lock.release()
+        
+        return lock
+
+    def renew_lock(self, pk):
+        '''
+        Renews a lock
+
+        :param int pk: the primary key for the lock to renew
+        '''
+        
+        with transaction.atomic():
+            try:
+                lock = self.get(pk=pk)
+            except self.model.DoesNotExist:
+                raise NonexistentLock()
+            
+            lock.renew()
+        
+        return lock
+
+    def filter_lock_for_obj(self, obj):
+        return self.filter(locked_object=_get_lock_name(obj))
+
+    def filter_active_lock_for_obj(self, obj):
+        return self.filter_lock_for_obj(obj).filter(self.not_expired_lookup)
 
     def is_locked(self, obj):
         '''
@@ -67,8 +112,7 @@ class LockManager(models.Manager):
 
         :returns: ``True`` if one exists
         '''
-        qs = self.filter(locked_object=_get_lock_name(obj))
-        return qs.count() > 0
+        return self.filter_active_lock_for_obj(obj).exists()
 
     def get_expired_locks(self):
         '''
@@ -77,12 +121,25 @@ class LockManager(models.Manager):
         :returns: a :class:`~django.db.models.query.QuerySet` containing all
             expired locks
         '''
-        result = []
-        for l in self.all():
-            if l.is_expired:
-                result.append(l.id)
-        return self.filter(id__in=result)
-
+        return self.filter(self.expired_lookup)
+    
+    @property
+    def not_expired_lookup(self):
+        '''
+        locks are not expired if max_age is forever or expires_on is in the future
+        
+        :returns: :class:`~from django.db.models.Q` matching all locks that are NOT expired
+        '''
+        return Q(max_age=MAX_AGE_FOREVER) | Q(expires_on__gt=timezone.now())
+    
+    @property
+    def expired_lookup(self):
+        '''
+        negate the "not expired lookup"
+        :returns: :class:`~from django.db.models.Q` matching all locks that ARE expired
+        '''
+        return ~self.not_expired_lookup
+    
 
 class Lock(models.Model):
     '''
@@ -93,14 +150,22 @@ class Lock(models.Model):
     )
     #: The creation time of the lock
     created_on = models.DateTimeField(
-        auto_now_add=True, verbose_name=_('created on'), db_index=True
+        verbose_name=_('created on'), db_index=True
     )
-    #: The age of a lock before it can be overwritten. If it's ``0``, it will
+    #: The renewal time of the lock
+    renewed_on = models.DateTimeField(
+        verbose_name=_('renewed on'), db_index=True
+    )
+    #: The expiration time of the lock
+    expires_on = models.DateTimeField(
+        verbose_name=_('expires on'), db_index=True
+    )
+    #: The age of a lock before it can be overwritten. If it's ``MAX_AGE_FOREVER``, it will
     #: never expire.
     max_age = models.PositiveIntegerField(
         default=DEFAULT_MAX_AGE, verbose_name=_('Maximum lock age'),
         help_text=_('The age of a lock before it can be overwritten. '
-                    '0 means indefinitely.')
+                    '%s means indefinitely.' % MAX_AGE_FOREVER)
     )
 
     objects = LockManager()
@@ -128,17 +193,13 @@ class Lock(models.Model):
             return True
         if not silent:
             raise NotLocked()
-
-    @property
-    def expires_on(self):
-        '''
-        Gets the :class:`~datetime.datetime` this ``Lock`` expires on.
-
-        :returns: the expiration date.  If :attr:`max_age` is ``0``, it will
-            return :attr:`created_on`.
-        :rtype: :class:`datetime.datetime`
-        '''
-        return self.created_on + timedelta(seconds=self.max_age)
+    
+    def renew(self):
+        if self.is_expired:
+            raise Expired()
+        
+        self.renewed_on = timezone.now()
+        self.save()
 
     @property
     def is_expired(self):
@@ -147,7 +208,21 @@ class Lock(models.Model):
 
         :returns: ``True`` or ``False``
         '''
-        if self.max_age == 0:
+        if self.max_age == MAX_AGE_FOREVER:
             return False
         else:
             return self.expires_on < timezone.now()
+
+
+@receiver(pre_save, sender=Lock)
+def lock_pre_save(sender, instance, raw, **kwargs):
+    if not raw:
+        now = timezone.now()
+        
+        if instance.created_on is None:
+            instance.created_on = now
+        
+        if instance.renewed_on is None:
+            instance.renewed_on = now
+        
+        instance.expires_on = instance.renewed_on + timedelta(seconds=instance.max_age)

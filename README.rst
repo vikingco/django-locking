@@ -22,6 +22,13 @@ yourself, you can do that to::
     do_something()
     lock.release()
 
+Test
+-----
+You can run the tests with
+::
+
+    python setup.py test
+
 Wishlist
 --------
 - Add lock time-out (try to aquire a lock for up to a given TIME_OUT), like

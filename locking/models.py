@@ -98,6 +98,12 @@ class LockManager(models.Manager):
         
         return lock
 
+    def filter_lock_for_obj(self, obj):
+        return self.filter(locked_object=_get_lock_name(obj))
+
+    def filter_active_lock_for_obj(self, obj):
+        return self.filter_lock_for_obj(obj).filter(self.not_expired_lookup)
+
     def is_locked(self, obj):
         '''
         Check whether a lock exists on a certain object
@@ -106,7 +112,7 @@ class LockManager(models.Manager):
 
         :returns: ``True`` if one exists
         '''
-        return self.filter(locked_object=_get_lock_name(obj)).filter(self.not_expired_lookup).exists()
+        return self.filter_active_lock_for_obj(obj).exists()
 
     def get_expired_locks(self):
         '''

@@ -64,7 +64,23 @@ class LockManager(models.Manager):
                     raise AlreadyLocked()
 
         return lock
-    
+
+    def release_lock(self, pk):
+        '''
+        Releases a lock
+        :param int pk: the primary key for the lock to release
+        '''
+        
+        with transaction.atomic():
+            try:
+                lock = self.get(pk=pk)
+            except self.model.DoesNotExist:
+                raise NotLocked()
+            
+            lock.release()
+        
+        return lock
+
     def renew_lock(self, pk):
         '''
         Renews a lock

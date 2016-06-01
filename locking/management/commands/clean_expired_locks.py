@@ -1,6 +1,4 @@
-from optparse import make_option
-
-from django.core.management.base import NoArgsCommand
+from django.core.management.base import BaseCommand
 
 from locking.models import NonBlockingLock
 
@@ -8,15 +6,17 @@ from logging import getLogger
 logger = getLogger(__name__)
 
 
-class Command(NoArgsCommand):
+class Command(BaseCommand):
     help_text = 'Remove expired locks'
-    option_list = NoArgsCommand.option_list + (
-        make_option('-n', '--dry-run', action='store_true', dest='dry_run',
-                    help='Just say how many we would remove, '
-                         'but don\'t actually do it'),
-    )
 
-    def handle_noargs(self, **options):
+    def add_arguments(self, parser):
+        parser.add_argument('--dry-run',
+                            action='store_true',
+                            dest='dry_run',
+                            default=False,
+                            help='Just say how many we would remove, but don\'t actually do it')
+
+    def handle(self, **options):
         locks = NonBlockingLock.objects.get_expired_locks()
         if options['dry_run']:
             logger.info('Would delete %s locks' % len(locks))

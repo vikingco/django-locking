@@ -27,7 +27,7 @@ def _get_lock_name(obj):
     :returns: a name for this object
     :rtype: :class:`str`
     '''
-    return '%s.%s__%d' % (obj.__module__, obj.__class__.__name__, obj.id)
+    return '%s.%s__%s' % (obj.__module__, obj.__class__.__name__, obj.pk)
 
 
 class LockManager(models.Manager):

@@ -8,7 +8,6 @@ create the basic table
 
 ::
     python manage.py migrate
-::
 
 
 The simplest use is by using it as a context manager:

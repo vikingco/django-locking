@@ -1,12 +1,10 @@
 language: python
 env:
-   - DJANGO='>=1.8,<1.9'
-   - DJANGO='>=1.9,<1.10'
-   - DJANGO='>=1.10,<1.11'
    - DJANGO='>=1.11,<1.12'
+   - DJANGO='>=2.0,<2.1'
+   - DJANGO='>=2.1<2.2'
 python:
-   - "2.7"
-   - "3.6"
+   - "3.6.7"
 install:
    - pip install --upgrade pip
    - pip install -e .

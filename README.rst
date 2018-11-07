@@ -8,16 +8,23 @@ Django-locking
 
 Usage
 -----
-The simplest use is by using it as a context manager:
+
+Add 'locking' to your INSTALLED_APPS settings, and run migrate to initialise
+create the basic table::
+
+    python manage.py migrate
+
+
+The simplest use is by using it as a context manager
 
 ::
+
+    from locking.models import NonBlockingLock, AlreadyLocked
 
     with NonBlockingLock.objects.acquire_lock(obj=model_obj):
         model_obj.do_something()
 
-Or you can keep track of the lock yourself:
-
-::
+Or you can keep track of the lock yourself::
 
     try:
         lock = NonBlockingLock.objects.acquire_lock(obj=model_obj)
